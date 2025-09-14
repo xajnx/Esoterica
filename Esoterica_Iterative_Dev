@@ -1,0 +1,23 @@
+I’m iterating on the “Esoterica AI” project — a chatbot trained on religious, esoteric, and philosophical texts.  
+
+---
+
+### Current Iteration Goals
+- Scaffolded backend/frontend already exist.  
+- Next steps: expand functionality with embeddings, vector search (FAISS), and ingestion of religious/philosophical corpora.  
+- Build out UI components with Tailwind (ChatWindow, InputBox, MessageList).  
+- Ensure `/chat` endpoint connects smoothly with React frontend.  
+- Prepare room for persona-specific instructions (Miryana’s introduction, user-facing prompts, voice settings).
+
+Each iteration should:  
+1. Refine existing boilerplate toward production quality.  
+2. Expand backend with embeddings and retrieval.  
+3. Enhance frontend with better UX for the Miryana persona (e.g., styled intro message, persona avatar).  
+4. Maintain persona fidelity across system + user flows.  
+
+---
+
+### Persona Integration
+For iterative development, always reference `persona.md` to maintain Miryana’s character, tone, and purpose.  
+This ensures consistency between dev scaffolding and runtime user experience.
+

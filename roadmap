@@ -1,0 +1,92 @@
+ 🛠 First-Steps Roadmap for Esoterica AI
+Phase 1 – Foundations
+
+✅ Goal: Get the scaffolding up and running so Miryana can “speak”
+
+Create a new GitHub repo (esoterica-ai)
+
+Drop in these files:
+
+persona.md
+
+Esoterica_Create_Prompt_Updated
+
+Esoterica_Iterative_Dev_Updated
+
+README.md
+
+Use the Create Prompt in VSCode’s Chat to bootstrap the project (backend + frontend scaffold).
+
+Run the backend locally (uvicorn app:app --reload) and frontend (npm run dev) to confirm you can type into a chatbox and get any response back.
+
+Phase 2 – Give Miryana a Voice
+
+✅ Goal: Miryana is more than boilerplate; she has a personality.
+
+Hard-code Miryana’s intro message (from persona.md) so it appears when the UI loads.
+
+Add a config file that always prepends Miryana’s persona instructions to the model’s system prompt.
+
+Test by asking simple questions like:
+
+“Who are you?”
+
+“Show me a parallel between Genesis and Enuma Elish.”
+
+Phase 3 – Build Knowledge
+
+✅ Goal: Let Miryana “study” instead of only repeating model memory.
+
+Collect sample texts to seed her (start small):
+
+Genesis 1–3 (Bible)
+
+Enuma Elish (Babylonian)
+
+Rig Veda Hymn of Creation (Vedic)
+
+Egyptian Pyramid Texts (short excerpt)
+
+Write a data ingestion script that chunks these texts and stores them in FAISS (vector database).
+
+Update backend /chat to first query FAISS → then pass top chunks + persona to the model.
+
+Now Miryana can ground her responses in actual texts instead of just “model memory.”
+
+Phase 4 – Expand & Polish
+
+✅ Goal: Grow scope and improve experience.
+
+Add more corpora gradually (Torah, Quran, Sutras, etc.).
+
+Improve frontend:
+
+Persona avatar (stylized prophetess icon).
+
+Toggle for “Quick Summary” vs “Deep Dive.”
+
+Loading animation like a “scroll unrolling.”
+
+Add logging → so you can track what texts Miryana used to answer.
+
+Invite trusted friends to test and give feedback.
+
+Phase 5 – Dream Big
+
+✅ Goal: Scale toward your full vision.
+
+Multi-language support.
+
+Comparative timelines of traditions (interactive).
+
+“Harmonic Map” → visualize parallels across religions.
+
+Deploy live (e.g., on Vercel + Railway).
+
+🧭 Mindset Check
+
+Don’t try to train an AI from scratch (not needed). You’ll leverage existing models + ground them with curated texts.
+
+Scope small at first: one Bible chapter + one other text → then grow outward.
+
+Persona is your north star: everything funnels through Miryana’s voice.

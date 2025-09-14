@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.env
+*.env
+.venv/
+venv/
+.cache/
+
+# Node
+node_modules/
+dist/
+*.log
+
+# IDE
+.vscode/
+.DS_Store
+
+# Data / artifacts
+/backend/data/*.faiss
+/backend/data/*.pkl
+/backend/data/*.jsonl

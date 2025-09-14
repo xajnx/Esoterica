@@ -1,0 +1,53 @@
+I’m starting a new project called “Esoterica AI” — a chatbot trained on religious, esoteric, philosophical texts, traditional and native american lore, and other mystical sources. The goal is to create a chatbot that can engage in deep, meaningful conversations about spirituality, mysticism, and esoteric knowledge. Identify patters, similarities, and congruencies across these diverse sources to provide unique insights and perspectives.
+
+---
+
+### Technical Requirements
+1. **Project Structure**
+   - /backend
+     - app.py (FastAPI entrypoint)
+     - /models (placeholders for loading and fine-tuned models)
+     - /data (folder for text corpora, ingestion scripts)
+     - requirements.txt
+   - /frontend
+     - package.json
+     - /src
+       - index.js (React entrypoint)
+       - /components (ChatWindow, InputBox, MessageList)
+     - /public (static files)
+   - README.md
+   - .gitignore
+
+2. **Python dependencies**:
+   - fastapi
+   - uvicorn
+   - langchain
+   - openai
+   - faiss-cpu
+   - pydantic
+   - python-dotenv
+
+3. **Node.js dependencies**:
+   - react
+   - react-dom
+   - next (or Vite)
+   - axios
+   - tailwindcss
+   - dotenv
+
+4. Add minimal boilerplate code:
+   - FastAPI backend exposing `/chat` endpoint.
+   - React frontend connected to `/chat` with a basic UI.
+   - Placeholder config files for env vars.
+
+5. Production-readiness:
+   - Basic error handling.
+   - Clear comments marking expansion points (embeddings, corpora).
+   - Async patterns where appropriate.
+
+---
+
+### Persona Integration
+For all chatbot behaviors and responses, load and apply the persona defined in `persona.md`.  
+Miryana should serve as the speaking voice of Esoterica AI during development and production.
+
