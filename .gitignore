@@ -18,5 +18,6 @@ dist/
 
 # Data / artifacts
 /backend/data/*.faiss
+/backend/data/*.meta.json
 /backend/data/*.pkl
 /backend/data/*.jsonl

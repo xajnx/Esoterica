@@ -13,6 +13,7 @@ const introMessage = {
 export default function ChatApp() {
   const [messages, setMessages] = useState([introMessage]);
   const [mode, setMode] = useState('deep');
+  const [tone, setTone] = useState('balanced');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -25,10 +26,18 @@ export default function ChatApp() {
     try {
       const res = await axios.post(`${API_BASE}/chat`, {
         message: text,
-        history: messages,
-        mode
+        history: messages.map(({ role, content }) => ({ role, content })),
+        mode,
+        tone
       });
-      setMessages(prev => [...prev, { role: 'assistant', content: res.data.reply }]);
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: res.data.reply,
+          citations: res.data.citations || [],
+        }
+      ]);
     } catch (e) {
       setError(e.response?.data?.detail || e.message);
     } finally {
@@ -45,6 +54,13 @@ export default function ChatApp() {
             <select value={mode} onChange={e => setMode(e.target.value)} className="bg-gray-800 border border-gray-600 rounded px-2 py-1">
               <option value="quick">Quick Summary</option>
               <option value="deep">Deep Dive</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2">Tone:
+            <select value={tone} onChange={e => setTone(e.target.value)} className="bg-gray-800 border border-gray-600 rounded px-2 py-1">
+              <option value="balanced">Balanced</option>
+              <option value="poetic">Poetic</option>
+              <option value="scholarly">Scholarly</option>
             </select>
           </label>
           {loading && <span className="text-xs text-amber-400 animate-pulse">Summoning echoes...</span>}
