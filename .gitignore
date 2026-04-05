@@ -6,14 +6,23 @@ __pycache__/
 .venv/
 venv/
 .cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Node
 node_modules/
 dist/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # IDE
 .vscode/
+.idea/
 .DS_Store
 
 # Data / artifacts
@@ -21,3 +30,16 @@ dist/
 /backend/data/*.meta.json
 /backend/data/*.pkl
 /backend/data/*.jsonl
+/backend/data/vector_store*
+
+# Misc Dev Files
+*.swp
+*.swo
+*~
+
+# Local prompt/instruction drafts and scratch notes
+*_Prompt
+*_Prompt_*
+*Iterative_Dev*
+AGENTS.local.md
+copilot-instructions.local.md

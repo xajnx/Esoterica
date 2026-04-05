@@ -1,165 +1,160 @@
 # Esoterica AI
 
-Esoterica AI is an experimental chatbot designed to **deep dive into the world’s religions, myths, and esoteric traditions**.  
-Its purpose is to reveal **patterns, congruences, and resonances** across belief systems while respecting their unique voices.  
+Esoterica AI is a comparative religion and myth analysis chatbot powered by a FastAPI backend and React frontend.
 
-At its heart is **Miryana**, a prophetess-like persona who guides users with wisdom, poetic cadence, and scholarly grounding.  
+Miryana is the guiding voice: wise, grounded, and citation-aware.
 
----
+## What Works Today
 
-## Project Structure
+- FastAPI chat backend with OpenAI integration.
+- Retrieval-augmented generation (RAG) using FAISS.
+- Seed corpus + ingestion script.
+- React chat UI with:
+  - Quick Summary / Deep Dive mode
+  - Balanced / Poetic / Scholarly tone selector
+  - Inline source citation pills
 
-```
+## Tech Stack
+
+- Backend: FastAPI, OpenAI Python SDK, FAISS, python-dotenv
+- Frontend: Vite, React, Tailwind, Axios
+
+## Repository Layout
+
+```text
 backend/
-	app.py                # FastAPI entrypoint (/chat, /health)
-	requirements.txt      # Python dependencies
-	.env.example          # Environment variable template
-	models/               # (Future) model loaders, chains
-	data/                 # Corpora, ingestion outputs (FAISS, chunks)
+  app.py
+  ingest.py
+  requirements.txt
+  .env.example
+  data/
+    corpus/
 frontend/
-	index.html            # Vite entry HTML
-	package.json          # React/Tailwind dependencies
-	tailwind.config.js    # Tailwind config
-	postcss.config.js     # PostCSS pipeline
-	src/
-		main.jsx            # React root renderer
-		styles.css          # Tailwind layers
-		components/
-			ChatApp.jsx       # Overall chat container
-			ChatWindow.jsx    # Scrollable conversation area
-			MessageList.jsx   # Renders messages
-			InputBox.jsx      # User input form
-persona.md              # Persona definition for Miryana
-roadmap                 # Phased development plan
-.gitignore
+  package.json
+  index.html
+  src/
+persona.md
+roadmap
 ```
 
----
+## Prerequisites
 
-## Persona (Miryana)
-See `persona.md`. The backend loads this file at startup (placeholder now) and the frontend seeds the intro message for immediate voice continuity. Future enhancement: inject persona text as a system prompt for every LLM call + retrieval-augmented context.
+- Python 3.11+
+- Node.js 18+ (or 20+ recommended)
+- npm
+- OpenAI API key
 
-Sample intro (auto-shown in UI):
-> I am Miryana, a keeper of echoes and threads... (see full text in `persona.md`).
+## Quick Start (Minimal Headache)
 
-Guidelines embedded: poetic, comparative, reverent, non-dogmatic, offers quick vs deep analysis.
+Run from project root (`Esoterica/`) unless noted.
 
----
-
-## Getting Started
-
-### 1. Backend (FastAPI)
-Create and activate a virtual environment, install deps, run server:
+### 1. Backend setup
 
 ```bash
 cd backend
 python -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 pip install -r requirements.txt
-cp .env.example .env  # add your API keys
-uvicorn app:app --reload --port 8000
+cp .env.example .env
 ```
 
-Health check: http://localhost:8000/health
+Edit `backend/.env` and set your key:
 
-### 2. Frontend (Vite + React + Tailwind)
+```env
+OPENAI_API_KEY=sk-...
+MODEL_NAME=gpt-4o-mini
+EMBEDDING_MODEL=text-embedding-3-small
+RETRIEVAL_TOP_K=4
+OPENAI_TIMEOUT_SEC=45
+VECTOR_STORE_PATH=./data/vector_store.faiss
+```
+
+### 2. Build the vector store (one-time or when corpus changes)
+
+```bash
+cd backend
+source .venv/bin/activate
+python ingest.py
+```
+
+Expected outputs:
+
+- `backend/data/vector_store.faiss`
+- `backend/data/vector_store.meta.json`
+
+### 3. Start backend
+
+```bash
+cd backend
+source .venv/bin/activate
+uvicorn app:app --reload --port 8000 --app-dir $(pwd)
+```
+
+Health check:
+
+- http://127.0.0.1:8000/health
+
+### 4. Start frontend
+
+Open a second terminal:
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Visit: http://localhost:5173 (default Vite port). Chat sends POST /chat to backend at http://localhost:8000.
+Open:
 
-If backend is at a different origin, set `VITE_API_BASE` in a `frontend/.env`:
-```
+- http://localhost:5173
+
+If backend is not on port 8000, create `frontend/.env`:
+
+```env
 VITE_API_BASE=http://localhost:8000
 ```
 
-Restart dev server after changes to env vars.
+Restart frontend after `.env` changes.
 
----
+## Day-to-Day Dev Commands
 
-## Environment Variables
-Backend `.env` (copy from `.env.example`):
-```
-OPENAI_API_KEY=sk-...
-MODEL_NAME=gpt-4o-mini
-VECTOR_STORE_PATH=./backend/data/vector_store.faiss
-```
-Frontend `.env` (optional):
-```
-VITE_API_BASE=http://localhost:8000
+Backend:
+
+```bash
+cd backend && source .venv/bin/activate && uvicorn app:app --reload --port 8000 --app-dir $(pwd)
 ```
 
-Never commit real secrets—`.env` is ignored.
+Frontend:
 
----
+```bash
+cd frontend && npm run dev
+```
 
-## Current Features
-- Persona intro displayed on load.
-- Mode switch: Quick Summary vs Deep Dive (affects placeholder response style).
-- Basic error handling and loading state.
-- CORS open for development.
+Rebuild vectors after corpus updates:
 
----
+```bash
+cd backend && source .venv/bin/activate && python ingest.py
+```
 
-## Planned Near-Term Enhancements (Phase 2 & 3)
-1. Inject persona text as system prompt to actual LLM provider.
-2. Add ingestion script:
-	 - Load seed texts (Genesis 1–3, Enuma Elish, Rig Veda Hymn of Creation, Pyramid Text excerpt).
-	 - Chunk & embed (OpenAI embeddings or local) -> store in FAISS.
-3. Retrieval Augmented Generation (RAG):
-	 - Query vector store for top-k passages.
-	 - Compose prompt: persona + user query + retrieved passages.
-4. Display citations inline (e.g., [Genesis 1:2], [Enuma Elish Tablet I]).
+## Common Problems and Fixes
 
----
+| Issue | Cause | Fix |
+|---|---|---|
+| `npm ERR! enoent ... Esoterica/package.json` | Running npm from repo root | Run npm commands from `frontend/` |
+| `Address already in use` on `:8000` | Old backend process still running | `kill $(lsof -ti:8000)` then restart uvicorn |
+| `rag_ready: false` in `/health` | Vector store missing or wrong path | Run `python ingest.py`, verify `VECTOR_STORE_PATH` |
+| 404/failed chat in UI | Backend not running or wrong API base | Start backend; verify `VITE_API_BASE` |
+| No citations in responses | Retrieval not loaded | Confirm `/health` shows `rag_ready: true` |
 
-## Longer-Term Ideas (Phase 4+)
-- Persona avatar & theming.
-- Toggle: Quick vs Deep vs Source-Cited.
-- Scroll “unrolling” animation while generating.
-- Logging of retrieved passages.
-- Multi-language support.
-- Comparative timeline & harmonic map visualization.
+## Notes
 
----
+- `persona.md` is loaded by backend and used in system prompt construction.
+- `backend/data/corpus/` currently contains seed summary texts for bootstrapping.
+- Real secrets belong in local `.env` only. Never commit credentials.
 
-## Development Notes
-- Keep responses side-effect free until actual model integration.
-- Add tests later for prompt formatting & retrieval ranking.
-- Consider abstraction layer for: PersonaManager, RetrievalPipeline, PromptComposer.
+## Roadmap
 
----
-
-## Contributing
-1. Fork & branch (`feature/xyz`).
-2. Keep persona tone intact.
-3. For new corpora provide source + licensing notes.
-
----
-
-## License
-TBD (recommendation: start with MIT unless corpus licensing requires additional clauses).
-
----
-
-## Quick Troubleshooting
-| Issue | Fix |
-|-------|-----|
-| 404 on /chat | Ensure backend running on :8000, correct VITE_API_BASE | 
-| CORS error | Confirm FastAPI CORS allows frontend origin | 
-| Tailwind classes not applied | Ensure `styles.css` imported & dev server restarted | 
-| Persona not loading | Check `persona.md` exists at project root |
-
----
-
-## Roadmap Reference
-See `roadmap` file for phased plan. Current repository state corresponds to end of Phase 1.
-
----
-
-May Miryana guide your iterations: illuminate, compare, never coerce.
+See `roadmap` for upcoming phases and expansion ideas.
 
 
