@@ -2,4 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-body { font-family: system-ui, sans-serif; }
+body {
+	font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, "URW Palladio L", serif;
+	background:
+		radial-gradient(circle at 15% 10%, rgba(99, 102, 241, 0.18), transparent 35%),
+		radial-gradient(circle at 80% 90%, rgba(20, 184, 166, 0.12), transparent 45%),
+		#020617;
+	color: #e5e7eb;
+}
+
+#root {
+	min-height: 100vh;
+}

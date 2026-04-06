@@ -1,5 +1,12 @@
 import React from 'react';
 
+function formatTimestamp(ts) {
+  if (!ts) return null;
+  const dt = new Date(ts);
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt.toLocaleString();
+}
+
 function CitationPills({ citations }) {
   if (!citations || citations.length === 0) return null;
   const deduped = citations.filter(
@@ -29,6 +36,9 @@ export default function MessageList({ messages }) {
           <div className={`inline-block px-3 py-2 rounded-lg text-sm leading-relaxed whitespace-pre-line ${m.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-100 border border-gray-700'}`}>
             {m.content}
             {m.role === 'assistant' && <CitationPills citations={m.citations} />}
+            {formatTimestamp(m.timestamp) && (
+              <div className="mt-2 text-[10px] opacity-70">{formatTimestamp(m.timestamp)}</div>
+            )}
           </div>
         </li>
       ))}

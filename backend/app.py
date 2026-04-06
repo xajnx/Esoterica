@@ -1,12 +1,16 @@
-import os
 import json
+import os
+import sqlite3
+import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Literal, Optional, cast
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from dotenv import load_dotenv
 
 # --- Load environment ---
 load_dotenv()
@@ -24,9 +28,17 @@ MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 _VECTOR_STORE_RAW = os.getenv("VECTOR_STORE_PATH", "./data/vector_store.faiss")
-VECTOR_STORE_PATH = str((BASE_DIR / _VECTOR_STORE_RAW).resolve()) if not Path(_VECTOR_STORE_RAW).is_absolute() else _VECTOR_STORE_RAW
+VECTOR_STORE_PATH = (
+    str((BASE_DIR / _VECTOR_STORE_RAW).resolve())
+    if not Path(_VECTOR_STORE_RAW).is_absolute()
+    else _VECTOR_STORE_RAW
+)
 RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "4"))
 OPENAI_TIMEOUT_SEC = float(os.getenv("OPENAI_TIMEOUT_SEC", "45"))
+_CHAT_DB_RAW = os.getenv("CHAT_DB_PATH", "./data/chat_history.db")
+CHAT_DB_PATH = (
+    str((BASE_DIR / _CHAT_DB_RAW).resolve()) if not Path(_CHAT_DB_RAW).is_absolute() else _CHAT_DB_RAW
+)
 
 # Populated in lifespan if API key is present; None triggers placeholder responses.
 openai_client = None
@@ -34,8 +46,213 @@ vector_index = None
 vector_metadata: list[dict] = []
 
 
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 def _vector_metadata_path() -> Path:
     return Path(VECTOR_STORE_PATH).with_suffix(".meta.json")
+
+
+def _chat_db_connection() -> sqlite3.Connection:
+    db_path = Path(CHAT_DB_PATH)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def _init_chat_db() -> None:
+    with _chat_db_connection() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversations (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                pinned INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        # Lightweight migration for older databases created before the `pinned` column existed.
+        existing_cols = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(conversations)").fetchall()
+        }
+        if "pinned" not in existing_cols:
+            conn.execute("ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                citations TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id, id)"
+        )
+
+
+def _conversation_exists(conversation_id: str) -> bool:
+    with _chat_db_connection() as conn:
+        row = conn.execute("SELECT id FROM conversations WHERE id = ?", (conversation_id,)).fetchone()
+    return row is not None
+
+
+def _create_conversation_record(title: Optional[str]) -> dict:
+    now = _utc_now_iso()
+    conversation_id = str(uuid.uuid4())
+    safe_title = (title or "Untitled Conversation").strip() or "Untitled Conversation"
+    with _chat_db_connection() as conn:
+        conn.execute(
+            "INSERT INTO conversations (id, title, pinned, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (conversation_id, safe_title, 0, now, now),
+        )
+    return {
+        "id": conversation_id,
+        "title": safe_title,
+        "pinned": False,
+        "created_at": now,
+        "updated_at": now,
+        "message_count": 0,
+    }
+
+
+def _append_message(
+    conversation_id: str,
+    role: Literal["user", "assistant", "system"],
+    content: str,
+    citations: Optional[list[dict]] = None,
+    created_at: Optional[str] = None,
+) -> None:
+    if not _conversation_exists(conversation_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    now = created_at or _utc_now_iso()
+    citations_payload = json.dumps(citations or [])
+
+    with _chat_db_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO messages (conversation_id, role, content, citations, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (conversation_id, role, content, citations_payload, now),
+        )
+        conn.execute(
+            "UPDATE conversations SET updated_at = ? WHERE id = ?",
+            (now, conversation_id),
+        )
+
+
+def _list_conversations() -> list[dict]:
+    with _chat_db_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT c.id, c.title, c.created_at, c.updated_at,
+                   c.pinned,
+                   COUNT(m.id) AS message_count
+            FROM conversations c
+            LEFT JOIN messages m ON m.conversation_id = c.id
+            GROUP BY c.id
+            ORDER BY c.pinned DESC, c.updated_at DESC
+            """
+        ).fetchall()
+
+    return [{**dict(row), "pinned": bool(row["pinned"])} for row in rows]
+
+
+def _get_conversation(conversation_id: str) -> dict:
+    with _chat_db_connection() as conn:
+        convo = conn.execute(
+            "SELECT id, title, pinned, created_at, updated_at FROM conversations WHERE id = ?",
+            (conversation_id,),
+        ).fetchone()
+        if convo is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        messages = conn.execute(
+            """
+            SELECT role, content, citations, created_at
+            FROM messages
+            WHERE conversation_id = ?
+            ORDER BY id ASC
+            """,
+            (conversation_id,),
+        ).fetchall()
+
+    parsed_messages: list[dict] = []
+    for row in messages:
+        parsed_messages.append(
+            {
+                "role": row["role"],
+                "content": row["content"],
+                "citations": json.loads(row["citations"]),
+                "timestamp": row["created_at"],
+            }
+        )
+
+    return {
+        "id": convo["id"],
+        "title": convo["title"],
+        "pinned": bool(convo["pinned"]),
+        "created_at": convo["created_at"],
+        "updated_at": convo["updated_at"],
+        "messages": parsed_messages,
+    }
+
+
+def _update_conversation(
+    conversation_id: str,
+    title: Optional[str] = None,
+    pinned: Optional[bool] = None,
+) -> dict:
+    if title is None and pinned is None:
+        raise HTTPException(status_code=400, detail="No conversation fields provided for update")
+
+    updates: list[str] = []
+    values: list[Any] = []
+
+    if title is not None:
+        safe_title = title.strip()
+        if not safe_title:
+            raise HTTPException(status_code=400, detail="Title cannot be empty")
+        updates.append("title = ?")
+        values.append(safe_title)
+
+    if pinned is not None:
+        updates.append("pinned = ?")
+        values.append(1 if pinned else 0)
+
+    now = _utc_now_iso()
+    updates.append("updated_at = ?")
+    values.append(now)
+    values.append(conversation_id)
+
+    with _chat_db_connection() as conn:
+        cur = conn.execute(
+            f"UPDATE conversations SET {', '.join(updates)} WHERE id = ?",
+            tuple(values),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return _get_conversation(conversation_id)
+
+
+def _delete_conversation(conversation_id: str) -> None:
+    with _chat_db_connection() as conn:
+        cur = conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Conversation not found")
 
 
 def _load_vector_store() -> None:
@@ -97,6 +314,7 @@ def _build_retrieval_context(passages: list[dict]) -> str:
         lines.append(f"[{source} | chunk {chunk_id}] {content}")
     return "\n".join(lines)
 
+
 # --- Mode-specific prompt instructions ---
 _MODE_INSTRUCTIONS: dict[str, str] = {
     "quick": (
@@ -131,6 +349,7 @@ _TONE_PROFILES: dict[str, str] = {
     ),
 }
 
+
 def _build_system_prompt(
     mode: Literal["quick", "deep"],
     tone: Literal["balanced", "poetic", "scholarly"],
@@ -141,6 +360,7 @@ def _build_system_prompt(
         f"Tone profile: {_TONE_PROFILES[tone]}\n\n"
         f"Response style: {_MODE_INSTRUCTIONS[mode]}"
     )
+
 
 # --- Lifespan (startup / shutdown) ---
 @asynccontextmanager
@@ -155,31 +375,37 @@ async def lifespan(app: FastAPI):
             max_retries=1,
         )
     _load_vector_store()
+    _init_chat_db()
     yield
     openai_client = None
 
+
 # --- FastAPI init ---
-app = FastAPI(title="Esoterica AI Backend", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="Esoterica AI Backend", version="0.3.0", lifespan=lifespan)
 
 # --- CORS (restrict to known dev origins) ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
+
 
 # --- Models ---
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant", "system"]
     content: str
 
+
 class ChatRequest(BaseModel):
     message: str
     history: Optional[List[ChatMessage]] = None
     mode: Literal["quick", "deep"] = "deep"
     tone: Literal["balanced", "poetic", "scholarly"] = "balanced"
+    conversation_id: Optional[str] = None
+
 
 class ChatResponse(BaseModel):
     reply: str
@@ -187,6 +413,53 @@ class ChatResponse(BaseModel):
     mode: str
     tone: str
     citations: List[dict] = []
+
+
+class ConversationSummary(BaseModel):
+    id: str
+    title: str
+    pinned: bool = False
+    created_at: str
+    updated_at: str
+    message_count: int
+
+
+class ConversationCreateRequest(BaseModel):
+    title: Optional[str] = None
+
+
+class ConversationRenameRequest(BaseModel):
+    title: Optional[str] = None
+    pinned: Optional[bool] = None
+
+
+class ConversationImportMessage(BaseModel):
+    role: Literal["user", "assistant", "system"]
+    content: str
+    citations: List[dict] = []
+    timestamp: Optional[str] = None
+
+
+class ConversationImportRequest(BaseModel):
+    title: str
+    messages: List[ConversationImportMessage]
+
+
+class ConversationMessage(BaseModel):
+    role: Literal["user", "assistant", "system"]
+    content: str
+    citations: List[dict] = []
+    timestamp: str
+
+
+class ConversationDetail(BaseModel):
+    id: str
+    title: str
+    pinned: bool = False
+    created_at: str
+    updated_at: str
+    messages: List[ConversationMessage]
+
 
 # --- LLM reply generator ---
 # System prompt = full persona (authoritative) + mode instruction.
@@ -200,15 +473,15 @@ async def generate_reply(
     if not openai_client:
         # Placeholder until OPENAI_API_KEY is configured in backend/.env
         label = "Quick Summary" if mode == "quick" else "Deep Dive"
-        note = f"[{label} — set OPENAI_API_KEY in backend/.env to activate Miryana]"
+        note = f"[{label} - set OPENAI_API_KEY in backend/.env to activate Miryana]"
         if mode == "quick":
             return (
                 f"{note}\nBrief reflection on '{message[:120]}': "
-                "Across traditions a common thread surfaces — ask for a Deep Dive to follow it further."
+                "Across traditions a common thread surfaces - ask for a Deep Dive to follow it further."
             ), []
         return (
             f"{note}\nYour inquiry '{message}' stirs old rivers of wisdom. "
-            "Creation hymns, prophetic visions, sacred law — all threads in a larger tapestry await grounding in the source texts."
+            "Creation hymns, prophetic visions, sacred law - all threads in a larger tapestry await grounding in the source texts."
         ), []
 
     messages: list[dict] = [{"role": "system", "content": _build_system_prompt(mode, tone)}]
@@ -238,6 +511,7 @@ async def generate_reply(
     ]
     return reply_text, citations
 
+
 # --- Routes ---
 @app.get("/health")
 async def health():
@@ -249,7 +523,50 @@ async def health():
         "rag_ready": vector_index is not None and len(vector_metadata) > 0,
         "vector_chunks": len(vector_metadata),
         "embedding_model": EMBEDDING_MODEL,
+        "chat_persistence_ready": Path(CHAT_DB_PATH).exists(),
+        "chat_db_path": CHAT_DB_PATH,
     }
+
+
+@app.get("/conversations", response_model=List[ConversationSummary])
+async def list_conversations():
+    return [ConversationSummary(**item) for item in _list_conversations()]
+
+
+@app.post("/conversations", response_model=ConversationSummary)
+async def create_conversation(req: ConversationCreateRequest):
+    return ConversationSummary(**_create_conversation_record(req.title))
+
+
+@app.post("/conversations/import", response_model=ConversationDetail)
+async def import_conversation(req: ConversationImportRequest):
+    created = _create_conversation_record(req.title)
+    for msg in req.messages:
+        _append_message(
+            created["id"],
+            msg.role,
+            msg.content,
+            citations=msg.citations,
+            created_at=msg.timestamp,
+        )
+    return ConversationDetail(**_get_conversation(created["id"]))
+
+
+@app.get("/conversations/{conversation_id}", response_model=ConversationDetail)
+async def get_conversation(conversation_id: str):
+    return ConversationDetail(**_get_conversation(conversation_id))
+
+
+@app.patch("/conversations/{conversation_id}", response_model=ConversationDetail)
+async def rename_conversation(conversation_id: str, req: ConversationRenameRequest):
+    return ConversationDetail(**_update_conversation(conversation_id, title=req.title, pinned=req.pinned))
+
+
+@app.delete("/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: str):
+    _delete_conversation(conversation_id)
+    return {"status": "deleted", "id": conversation_id}
+
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
@@ -257,6 +574,10 @@ async def chat(req: ChatRequest):
         raise HTTPException(status_code=400, detail="Empty message")
     try:
         reply_text, citations = await generate_reply(req.message, req.history, req.mode, req.tone)
+        if req.conversation_id:
+            now = _utc_now_iso()
+            _append_message(req.conversation_id, "user", req.message, created_at=now)
+            _append_message(req.conversation_id, "assistant", reply_text, citations=citations, created_at=now)
         return ChatResponse(
             reply=reply_text,
             persona="Miryana",
@@ -264,10 +585,14 @@ async def chat(req: ChatRequest):
             tone=req.tone,
             citations=citations,
         )
+    except HTTPException:
+        raise
     except Exception as e:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # Run helper for manual execution (optional)
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

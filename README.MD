@@ -13,6 +13,12 @@ Miryana is the guiding voice: wise, grounded, and citation-aware.
   - Quick Summary / Deep Dive mode
   - Balanced / Poetic / Scholarly tone selector
   - Inline source citation pills
+  - Multi-conversation history (create, rename, delete, clear)
+  - Pinned/favorite conversations (persisted)
+  - Timestamped messages
+  - Export active conversation as JSON or Markdown
+  - Import conversation JSON exports back into the app
+  - Keyboard shortcuts: `Alt+N` (new), `Alt+F` (search), `Alt+J` (export JSON)
 
 ## Tech Stack
 
@@ -68,6 +74,7 @@ EMBEDDING_MODEL=text-embedding-3-small
 RETRIEVAL_TOP_K=4
 OPENAI_TIMEOUT_SEC=45
 VECTOR_STORE_PATH=./data/vector_store.faiss
+CHAT_DB_PATH=./data/chat_history.db
 ```
 
 ### 2. Build the vector store (one-time or when corpus changes)
@@ -119,6 +126,25 @@ Restart frontend after `.env` changes.
 
 ## Day-to-Day Dev Commands
 
+One-command startup (Linux):
+
+```bash
+./dev-up.sh
+```
+
+What it does:
+
+- Starts backend on `:8000` from `backend/.venv`
+- Installs frontend dependencies if missing
+- Starts frontend on `:5173`
+- Opens browser to `http://localhost:5173` (via `xdg-open`)
+
+Optional custom ports:
+
+```bash
+BACKEND_PORT=8001 FRONTEND_PORT=5174 ./dev-up.sh
+```
+
 Backend:
 
 ```bash
@@ -151,6 +177,7 @@ cd backend && source .venv/bin/activate && python ingest.py
 
 - `persona.md` is loaded by backend and used in system prompt construction.
 - `backend/data/corpus/` currently contains seed summary texts for bootstrapping.
+- Conversation and message history are persisted in SQLite at `CHAT_DB_PATH`.
 - Real secrets belong in local `.env` only. Never commit credentials.
 
 ## Roadmap
